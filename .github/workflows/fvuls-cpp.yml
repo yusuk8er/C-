@@ -1,0 +1,48 @@
+name: Upload C/C++ library identification data
+
+on:
+  workflow_dispatch:
+    inputs:
+      zlib_version:
+        description: "zlib version to fetch (e.g. 1.2.12 = vulnerable, 1.3.1 = fixed)"
+        default: "1.2.12"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  upload-cpp-library:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Fetch zlib source (trial only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${{ github.event.inputs.zlib_version }}"
+          mkdir -p third_party
+          curl -fsSL -o zlib.tar.gz "https://github.com/madler/zlib/archive/refs/tags/v${V}.tar.gz"
+          tar -xzf zlib.tar.gz
+          mv "zlib-${V}" third_party/zlib
+          echo "--- third_party/zlib ---"
+          ls third_party/zlib | head
+
+      - name: Generate C/C++ library identification data
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o futurevuls-cpp-fingerprint.sh https://installer.vuls.biz/futurevuls-cpp-fingerprint.sh
+          bash futurevuls-cpp-fingerprint.sh third_party/zlib
+          echo "--- generated json (head) ---"
+          head -c 300 futurevuls-cpp-library.json; echo
+
+      - name: Upload C/C++ library identification data
+        uses: futurevuls/fvuls-lockfile-uploader@9245e71ad5a5833acf0196650027fc4a6be78921 # v2
+        env:
+          FVULS_SERVER_UUID: ${{ secrets.FVULS_SERVER_UUID }}
+          FVULS_TOKEN: ${{ secrets.FVULS_TOKEN }}
+        with:
+          repoName: ${{ github.repository }}
+          path: "./futurevuls-cpp-library.json"
