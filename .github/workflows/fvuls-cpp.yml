@@ -26,6 +26,7 @@ jobs:
           curl -fsSL -o zlib.tar.gz "https://github.com/madler/zlib/archive/refs/tags/v${V}.tar.gz"
           tar -xzf zlib.tar.gz
           mv "zlib-${V}" third_party/zlib
+          rm -rf third_party/zlib/contrib third_party/zlib/examples third_party/zlib/test
           echo "--- third_party/zlib ---"
           ls third_party/zlib | head
 
