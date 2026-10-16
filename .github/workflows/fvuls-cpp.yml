@@ -3,9 +3,17 @@ name: Upload C/C++ library identification data
 on:
   workflow_dispatch:
     inputs:
-      zlib_version:
-        description: "zlib version to fetch (e.g. 1.2.12 = vulnerable, 1.3.1 = fixed)"
-        default: "1.2.12"
+      lib:
+        description: "library name (directory name under third_party)"
+        default: "curl"
+        required: true
+      repo:
+        description: "GitHub owner/repo"
+        default: "curl/curl"
+        required: true
+      tag:
+        description: "git tag (e.g. curl-8_3_0 = vulnerable, curl-8_4_0 = fixed)"
+        default: "curl-8_3_0"
         required: true
 
 permissions:
@@ -17,27 +25,37 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Fetch zlib source (trial only)
+      - name: Fetch library source (trial only)
         shell: bash
         run: |
           set -euo pipefail
-          V="${{ github.event.inputs.zlib_version }}"
-          mkdir -p third_party
-          curl -fsSL -o zlib.tar.gz "https://github.com/madler/zlib/archive/refs/tags/v${V}.tar.gz"
-          tar -xzf zlib.tar.gz
-          mv "zlib-${V}" third_party/zlib
-          
-          echo "--- third_party/zlib ---"
-          ls third_party/zlib | head
+          LIB="${{ github.event.inputs.lib }}"
+          REPO="${{ github.event.inputs.repo }}"
+          TAG="${{ github.event.inputs.tag }}"
+          mkdir -p third_party src
+          curl -fsSL -o src.tar.gz "https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz"
+          tar -xzf src.tar.gz -C src
+          mv src/* "third_party/${LIB}"
+          echo "--- third_party/${LIB} ---"
+          ls "third_party/${LIB}" | head
 
       - name: Generate C/C++ library identification data
         shell: bash
         run: |
           set -euo pipefail
           curl -fsSL -o futurevuls-cpp-fingerprint.sh https://installer.vuls.biz/futurevuls-cpp-fingerprint.sh
-          bash futurevuls-cpp-fingerprint.sh third_party/zlib
+          bash futurevuls-cpp-fingerprint.sh third_party/*/
           echo "--- generated json (head) ---"
           head -c 300 futurevuls-cpp-library.json; echo
+
+      - name: Debug - ask OSV directly
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq '{name: .components[0].label, file_hashes: [.components[0].hashes[] | {hash: .}]}' \
+            futurevuls-cpp-library.json > osv-req.json
+          curl -fsS -X POST https://api.osv.dev/v1experimental/determineversion \
+            -H 'Content-Type: application/json' --data @osv-req.json | jq '.matches[:5]'
 
       - name: Upload C/C++ library identification data
         uses: futurevuls/fvuls-lockfile-uploader@9245e71ad5a5833acf0196650027fc4a6be78921 # v2
